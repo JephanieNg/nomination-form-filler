@@ -1,0 +1,8 @@
+# Publish only the app itself. Customer printouts, filled forms and other
+# files in this folder must never be committed.
+*
+!.gitignore
+!index.html
+!core.js
+!template.js
+!README.md

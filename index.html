@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nomination Form Filler</title>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="template.js"></script>
+<script src="core.js"></script>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --ink: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #c8102e; --accent-ink: #fff; --soft: #fdf1f3; --ok: #127a46; --warn: #a15c00; --warn-bg: #fff6e5;
+    --field: #fff; --focus: #2b6cdf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161b; --card: #1c1f26; --ink: #e8eaf0; --muted: #9aa3b5; --line: #2d323c; --soft: #2a1d21;
+      --field: #232731; --warn-bg: #2e2516; --warn: #f0b45a; --ok: #4cc38a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .tag { color: var(--muted); font-size: 12px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 80px; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .step { background: var(--accent); color: var(--accent-ink); width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 8px; display: flex; align-items: center; gap: 8px; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 28px; text-align: center; cursor: pointer; transition: .15s; }
+  #drop.over, #drop:hover { border-color: var(--accent); background: var(--soft); }
+  #drop b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .muted { color: var(--muted); }
+  .progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 12px; display: none; }
+  .progress div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  #status { margin-top: 8px; min-height: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 10px 12px; }
+  .c12 { grid-column: span 12; } .c8 { grid-column: span 8; } .c6 { grid-column: span 6; } .c4 { grid-column: span 4; } .c3 { grid-column: span 3; } .c2 { grid-column: span 2; }
+  .dates { display: grid; grid-template-columns: 3fr 5fr 4fr; gap: 6px; }
+  .dates select { padding: 7px 4px; }
+  @media (max-width: 720px) { .c8, .c6, .c4, .c3 { grid-column: span 12; } .c2 { grid-column: span 4; } }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  input, select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--ink); font: inherit; }
+  input:focus, select:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-color: transparent; }
+  .need input, .need select { border-color: var(--warn); background: var(--warn-bg); }
+  .person { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .person-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 600; }
+  button { font: inherit; border-radius: 6px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 10px 20px; }
+  button.link { border: 0; background: none; color: var(--focus); padding: 2px 4px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .notes { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .notes li { padding: 8px 12px; border-radius: 6px; background: var(--warn-bg); color: var(--warn); }
+  .notes li.ok { background: transparent; color: var(--ok); padding-left: 0; }
+  .total { font-weight: 600; }
+  .total.bad { color: var(--accent); } .total.good { color: var(--ok); }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink); margin: 0; }
+  .check input { width: auto; }
+  details pre { white-space: pre-wrap; font-size: 11px; max-height: 300px; overflow: auto; background: var(--bg); padding: 10px; border-radius: 6px; }
+  #preview { width: 100%; height: 80vh; border: 1px solid var(--line); border-radius: 8px; display: none; margin-top: 14px; background: #fff; }
+  .top { position: sticky; top: 0; z-index: 10; }
+  #newBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 24px; background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid var(--line); }
+  #newBar span { flex: 1 1 260px; }
+  .hidden { display: none !important; }
+  #extraBox { border: 1px dashed var(--line); border-radius: 8px; padding: 4px 14px 12px; margin: 14px 0 4px; }
+  #extraBox.over { border-color: var(--accent); background: var(--soft); }
+  textarea { width: 100%; margin: 10px 0 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--ink); font: 13px/1.4 Consolas, monospace; resize: vertical; }
+  .extras { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+  .extras li { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
+  .extras .found { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .extras select { width: auto; padding: 4px 6px; }
+  .applied { color: var(--ok); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="top">
+<header>
+  <h1>Nomination Form Filler</h1>
+  <span class="tag">Great Eastern · Appointment / Change of Nominee(s) / Trustee(s) · NBZ-FNOMI-V07</span>
+  <button class="primary hidden" id="newCust" style="margin-left:auto;white-space:nowrap">+ New customer</button>
+</header>
+<div id="newBar" class="hidden">
+  <span id="newMsg"></span>
+  <button class="primary" id="newYes">Yes, start new form</button>
+  <button id="newNo">Cancel</button>
+</div>
+</div>
+<main>
+  <section class="card">
+    <h2><span class="step">1</span>Load the customer's policy details</h2>
+    <div id="drop">
+      <b>Drop the Policy Detail printout here, or click to choose</b>
+      <span class="muted">PDF saved from ePartner Customer Service, or a screenshot (PNG / JPG). Everything is processed on this computer.</span>
+      <input id="file" type="file" accept=".pdf,image/*" hidden>
+    </div>
+    <div class="progress" id="prog"><div></div></div>
+    <div id="status" class="muted"></div>
+    <details id="rawBox" class="hidden"><summary class="muted">Show extracted text</summary><pre id="raw"></pre></details>
+    <div class="row" style="margin-top:8px">
+      <button class="link" id="manual">Skip — fill in details manually</button>
+      <button class="link" id="tplBtn">Use a different blank nomination form…</button>
+      <input id="tplFile" type="file" accept=".pdf" hidden>
+    </div>
+  </section>
+
+  <section class="card hidden" id="formCard">
+    <h2><span class="step">2</span>Review and complete the details</h2>
+    <ul class="notes" id="notes"></ul>
+
+    <div id="extraBox">
+      <h3>Upload answers / extra information <span class="muted" style="text-transform:none;letter-spacing:0">optional</span></h3>
+      <p class="muted" style="margin:0 0 8px">Upload an answer sheet (.txt), a photo or screenshot (.png / .jpg) of an IC or notes, or type the details below. The details are added to the form, and you can still edit everything.</p>
+      <div class="row">
+        <button id="sheetBtn">Download answer sheet</button>
+        <button id="extraPick">Upload .txt / .png / .jpg</button>
+        <input id="extraFile" type="file" multiple accept=".txt,text/plain,image/png,image/jpeg" hidden>
+        <span class="muted" id="extraStatus"></span>
+      </div>
+      <textarea id="extraText" rows="4" placeholder="Or type / paste details, one per line, e.g.&#10;Marital Status: Married&#10;Children: 2&#10;Nominee 1 NRIC: 650812-07-5124&#10;Nominee 2 Name: LAI AH KOW"></textarea>
+      <div class="row"><button id="extraApply">Apply typed details</button></div>
+      <ul class="extras" id="extraList"></ul>
+    </div>
+
+    <div id="form"></div>
+  </section>
+  <datalist id="dl-countries"></datalist>
+  <datalist id="dl-nationalities"></datalist>
+  <datalist id="dl-towns"></datalist>
+  <datalist id="dl-relationships"></datalist>
+
+  <section class="card hidden" id="outCard">
+    <h2><span class="step">3</span>Generate the filled form</h2>
+    <div class="row">
+      <button class="primary" id="gen">Generate &amp; download PDF</button>
+      <button id="newCust2">+ New customer</button>
+      <span class="muted" id="genMsg"></span>
+    </div>
+    <iframe id="preview" title="Filled form preview"></iframe>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const C = window.NomCore;
+  let state = null;
+  let templateBytes = Uint8Array.from(atob(window.NOMINATION_TEMPLATE_B64), c => c.charCodeAt(0));
+  let customerFileName = '';
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  // ---------- step 1: reading the customer file ----------
+  const drop = $('#drop'), fileIn = $('#file');
+  drop.onclick = () => fileIn.click();
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+  fileIn.onchange = () => fileIn.files[0] && handleFile(fileIn.files[0]);
+  $('#manual').onclick = () => { state = C.buildState({}); reapplyExtras(); customerFileName = ''; setStatus(''); showForm(); };
+  $('#tplBtn').onclick = () => $('#tplFile').click();
+  $('#tplFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    templateBytes = new Uint8Array(await f.arrayBuffer());
+    setStatus(`Using blank form: ${f.name}`);
+  };
+
+  // Start over with a blank nomination form for the next customer (a chosen blank form is kept).
+  // Asks on the page itself: browser confirm() pop-ups can be blocked, which silently cancels.
+  $('#newCust').onclick = () => {
+    if (!state) return startNew();
+    const who = state.proposer.name;
+    $('#newMsg').textContent = `Start a new nomination form? The details entered${who ? ' for ' + who : ''} will be cleared — download the PDF first if you still need it.`;
+    $('#newBar').classList.remove('hidden');
+    $('#newYes').focus();
+  };
+  $('#newNo').onclick = () => $('#newBar').classList.add('hidden');
+  $('#newYes').onclick = () => startNew();
+  function startNew() {
+    $('#newBar').classList.add('hidden');
+    state = null; customerFileName = ''; extras = [];
+    renderExtras();
+    $('#extraText').value = ''; $('#extraStatus').textContent = ''; $('#genMsg').textContent = '';
+    $('#form').innerHTML = ''; $('#notes').innerHTML = '';
+    const pv = $('#preview'); if (pv.src.startsWith('blob:')) URL.revokeObjectURL(pv.src);
+    pv.removeAttribute('src'); pv.style.display = 'none';
+    $('#raw').textContent = ''; $('#rawBox').classList.add('hidden'); $('#rawBox').open = false;
+    fileIn.value = ''; $('#extraFile').value = '';
+    $('#formCard').classList.add('hidden'); $('#outCard').classList.add('hidden'); $('#newCust').classList.add('hidden');
+    setStatus('Ready for the next customer. Load their Policy Detail printout, or fill in details manually.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  $('#newCust2').onclick = () => $('#newCust').click();
+
+  const setStatus = (msg, pct) => {
+    $('#status').textContent = msg;
+    const p = $('#prog');
+    p.style.display = pct == null ? 'none' : 'block';
+    if (pct != null) p.firstElementChild.style.width = Math.round(pct * 100) + '%';
+  };
+
+  async function handleFile(file) {
+    customerFileName = file.name;
+    try {
+      let text = '';
+      let canvases = [];
+      if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+        setStatus('Opening PDF…', 0.02);
+        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+        text = await pdfTextLayer(pdf);
+        if (text.replace(/\s/g, '').length < 200) {
+          for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
+            setStatus(`Preparing page ${i} of ${pdf.numPages} for reading…`, 0.05);
+            canvases.push(await renderPage(pdf, i));
+          }
+        }
+      } else {
+        canvases.push(await imageToCanvas(file));
+      }
+      if (canvases.length) text = await ocr(canvases);
+      $('#raw').textContent = text;
+      $('#rawBox').classList.remove('hidden');
+      const parsed = C.parseCustomerText(text);
+      state = C.buildState(parsed);
+      reapplyExtras();
+      setStatus(`Read ${file.name}. Check the highlighted fields below.`);
+      showForm();
+    } catch (err) {
+      console.error(err);
+      setStatus('Could not read this file: ' + err.message);
+    }
+  }
+
+  async function pdfTextLayer(pdf) {
+    let out = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const tc = await (await pdf.getPage(i)).getTextContent();
+      const rows = new Map();
+      for (const it of tc.items) {
+        if (!it.str.trim()) continue;
+        const y = Math.round(it.transform[5] / 3) * 3;
+        if (!rows.has(y)) rows.set(y, []);
+        rows.get(y).push({ x: it.transform[4], w: it.width, s: it.str });
+      }
+      [...rows.keys()].sort((a, b) => b - a).forEach(y => {
+        let line = '', end = null;
+        for (const it of rows.get(y).sort((a, b) => a.x - b.x)) {
+          if (end != null) line += it.x - end > 8 ? '    ' : (it.x - end > 1 ? ' ' : '');
+          line += it.s; end = it.x + it.w;
+        }
+        out += line + '\n';
+      });
+    }
+    return out;
+  }
+
+  async function renderPage(pdf, n) {
+    const page = await pdf.getPage(n);
+    const vp = page.getViewport({ scale: 3 });
+    const c = document.createElement('canvas');
+    c.width = vp.width; c.height = vp.height;
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    return c;
+  }
+
+  async function imageToCanvas(file) {
+    const img = await createImageBitmap(file);
+    const k = img.width < 2000 ? 2000 / img.width : 1;
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  // Black/white threshold, then erase long table grid lines so OCR reads the cell values cleanly
+  function cleanForOcr(c) {
+    const W = c.width, H = c.height, g = c.getContext('2d');
+    const d = g.getImageData(0, 0, W, H), p = d.data;
+    const dark = new Uint8Array(W * H);
+    for (let i = 0, j = 0; i < p.length; i += 4, j++) dark[j] = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) < 140 ? 1 : 0;
+    const erase = new Uint8Array(W * H);
+    const hRun = Math.round(W / 20), vRun = Math.round(H / 75);
+    for (let y = 0; y < H; y++) { let s = -1; for (let x = 0; x <= W; x++) { if (x < W && dark[y * W + x]) { if (s < 0) s = x; } else { if (s >= 0 && x - s > hRun) for (let k = s; k < x; k++) erase[y * W + k] = 1; s = -1; } } }
+    for (let x = 0; x < W; x++) { let s = -1; for (let y = 0; y <= H; y++) { if (y < H && dark[y * W + x]) { if (s < 0) s = y; } else { if (s >= 0 && y - s > vRun) for (let k = s; k < y; k++) erase[k * W + x] = 1; s = -1; } } }
+    for (let j = 0, i = 0; j < dark.length; j++, i += 4) { const v = dark[j] && !erase[j] ? 0 : 255; p[i] = p[i + 1] = p[i + 2] = v; p[i + 3] = 255; }
+    g.putImageData(d, 0, 0);
+    return c;
+  }
+
+  async function ocr(canvases, { clean = true, status = setStatus } = {}) {
+    status('Loading text recognition (first time takes a few seconds)…', 0.08);
+    let pageNo = 0;
+    const worker = await Tesseract.createWorker('eng', 1, {
+      logger: m => { if (m.status === 'recognizing text') status(`Reading page ${pageNo} of ${canvases.length}…`, 0.1 + 0.9 * ((pageNo - 1 + m.progress) / canvases.length)); }
+    });
+    await worker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: clean ? '6' : '3' });
+    let text = '';
+    for (const c of canvases) {
+      pageNo++;
+      const r = await worker.recognize(clean ? cleanForOcr(c) : c);
+      text += r.data.text + '\n';
+    }
+    await worker.terminate();
+    return text;
+  }
+
+  // ---------- step 2: review form ----------
+  // list items are either "Value" or ["value", "Label"]
+  const opt = (list, v, blank = '— select —') => `<option value="">${blank}</option>` + list.map(o => {
+    const [val, lab] = Array.isArray(o) ? o : [o, o];
+    return `<option value="${esc(val)}"${val === v ? ' selected' : ''}>${esc(lab)}</option>`;
+  }).join('');
+  const get = path => path.split('.').reduce((o, k) => o?.[k], state);
+  const set = (path, v) => { const ks = path.split('.'); const last = ks.pop(); ks.reduce((o, k) => o[k], state)[last] = v; };
+
+  const pad = n => String(n).padStart(2, '0');
+  const THIS_YEAR = new Date().getFullYear();
+  const DAYS = Array.from({ length: 31 }, (_, i) => pad(i + 1));
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((m, i) => [pad(i + 1), `${pad(i + 1)} ${m}`]);
+  const BIRTH_YEARS = Array.from({ length: 110 }, (_, i) => String(THIS_YEAR - i));
+  const EXPIRY_YEARS = Array.from({ length: 16 }, (_, i) => String(THIS_YEAR + i));
+
+  function f(path, label, cls = 'c6', { type = 'text', need = false, list, ph = '', dl } = {}) {
+    const v = get(path) ?? '';
+    const needCls = need && !v ? ' need' : '';
+    let input;
+    if (list) input = `<select data-p="${path}">${opt(list, v)}</select>`;
+    else if (type === 'dmy') { // stored as DD/MM/YYYY, shown with the date picker
+      const m = String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      input = `<input data-p="${path}" data-fmt="dmy" type="date" value="${m ? `${m[3]}-${m[2]}-${m[1]}` : ''}">`;
+    } else input = `<input data-p="${path}" type="${type}" value="${esc(v)}" placeholder="${esc(ph)}"${dl ? ` list="${dl}"` : ''}>`;
+    return `<div class="${cls}${needCls}"><label>${label}</label>${input}</div>`;
+  }
+  // Day / Month / Year dropdowns
+  const SHARES = ['100', '90', '80', '75', '70', '60', '50', '40', '34', '33', '30', '25', '20', '10'];
+  const dateSel =(base, keys, label, years, need) => `<div><label>${label}</label><div class="dates">
+      ${f(`${base}.${keys[0]}`, '', '', { list: DAYS, need })}${f(`${base}.${keys[1]}`, '', '', { list: MONTHS, need })}${f(`${base}.${keys[2]}`, '', '', { list: years, need })}</div></div>`;
+
+  function personFields(base, kind) {
+    const p = get(base);
+    let h = `<div class="grid">
+      ${f(base + '.name', 'Full name as per NRIC / Passport', 'c12', { need: true })}
+      ${f(base + '.nric', 'NRIC (12 digits)', 'c4', { need: !p.passport, ph: 'e.g. 650812-07-5124' })}
+      ${f(base + '.passport', 'Passport no. (if no NRIC)', 'c4')}
+      <div class="c4">${dateSel(base, ['ppDay', 'ppMonth', 'ppYear'], 'Passport expiry (if any)', EXPIRY_YEARS)}</div>
+      ${f(base + '.gender', 'Gender', 'c4', { list: ['Male', 'Female'], need: true })}
+      <div class="c4">${dateSel(base, ['dobDay', 'dobMonth', 'dobYear'], 'Date of birth', BIRTH_YEARS, true)}</div>
+      ${f(base + '.nationality', 'Nationality', 'c2', { list: ['Malaysian', 'Others'] })}
+      ${p.nationality === 'Others' ? f(base + '.nationalityOther', 'Nationality (state)', 'c2', { dl: 'dl-nationalities', need: true }) : '<div class="c2"></div>'}`;
+    if (kind === 'nominee') {
+      h += `${f(base + '.relationship', 'Relationship to proposer', 'c4', { list: C.RELATIONSHIPS, need: true })}
+        ${p.relationship === 'Others' ? f(base + '.relationshipOther', 'Relationship (state)', 'c4', { dl: 'dl-relationships', need: true }) : '<div class="c4"></div>'}
+        ${f(base + '.share', '% of share', 'c4', { list: SHARES.includes(p.share) || !p.share ? SHARES : [...SHARES, p.share], need: true })}`;
+    } else {
+      h += `${f(base + '.countryOfBirth', 'Country of birth', 'c4', { list: ['Malaysian', 'Others'] })}
+        ${p.countryOfBirth === 'Others' ? f(base + '.countryOfBirthOther', 'Country of birth (state)', 'c4', { dl: 'dl-countries', need: true }) : '<div class="c4"></div>'}
+        <div class="c4"></div>
+        ${f(base + '.tel', 'Tel no.', 'c4')}${f(base + '.telCountry', 'Tel country', 'c4', { dl: 'dl-countries' })}${f(base + '.telType', 'Tel type', 'c4', { list: ['House', 'Handphone', 'Office'] })}`;
+    }
+    h += `<div class="c12" style="display:flex;justify-content:space-between;align-items:end"><label style="margin:0">Mailing address</label><button class="link" data-act="copyAddr" data-base="${base}">Same as proposer's address</button></div>
+      ${f(base + '.addr1', '', 'c12', { need: true })}${f(base + '.addr2', '', 'c12')}${f(base + '.addr3', '', 'c12')}
+      ${f(base + '.postcode', 'Postcode', 'c3', { need: true })}${f(base + '.town', 'Town', 'c6', { need: true, dl: 'dl-towns' })}${f(base + '.country', 'Country', 'c3', { dl: 'dl-countries' })}
+    </div>`;
+    return h;
+  }
+
+  function render() {
+    const s = state;
+    const total = s.nominees.reduce((a, n) => a + (parseFloat(n.share) || 0), 0);
+    let h = `
+      <h3>Policy</h3>
+      <div class="grid">${f('policyNo', 'Policy no.', 'c6', { need: !s.proposalNo })}${f('proposalNo', 'Proposal no. (new business only)', 'c6')}</div>
+
+      <h3>Proposer / Policyowner</h3>
+      <div class="grid">
+        ${f('proposer.name', 'Full name as per NRIC / Passport', 'c8', { need: true })}
+        ${f('proposer.nric', 'NRIC / Passport no.', 'c4', { need: true })}
+        ${f('proposer.muslim', 'Muslim?', 'c3', { list: ['No', 'Yes'], need: true })}
+        ${f('proposer.status', 'Marital status', 'c3', { list: C.STATUSES, need: true })}
+        ${f('proposer.children', 'Any children?', 'c3', { list: ['No', 'Yes'], need: true })}
+        ${s.proposer.children === 'Yes' ? f('proposer.childrenCount', 'No. of children', 'c3', { type: 'number', need: true }) : '<div class="c3"></div>'}
+        <div class="c12 muted" style="font-size:12px">Proposer's address on record (used by "Same as proposer's address"):</div>
+        ${f('proposer.addr1', '', 'c12')}${f('proposer.addr2', '', 'c12')}${f('proposer.addr3', '', 'c12')}
+        ${f('proposer.postcode', 'Postcode', 'c3')}${f('proposer.town', 'Town', 'c6', { dl: 'dl-towns' })}${f('proposer.country', 'Country', 'c3', { dl: 'dl-countries' })}
+      </div>
+
+      <h3>Part 1 · Nominee(s) <span class="total ${total === 100 ? 'good' : 'bad'}">Total share: ${total}%</span></h3>`;
+    s.nominees.forEach((n, i) => {
+      h += `<div class="person"><div class="person-head">Nominee ${i + 1}
+        ${s.nominees.length > 1 ? `<button class="link" data-act="del" data-list="nominees" data-i="${i}">Remove</button>` : ''}</div>${personFields('nominees.' + i, 'nominee')}</div>`;
+    });
+    h += `<div class="row">${s.nominees.length < 4 ? '<button data-act="add" data-list="nominees">+ Add nominee</button>' : ''}
+      ${s.nominees.length > 1 ? '<button data-act="split">Split shares equally</button>' : ''}</div>
+
+      <h3>Witness</h3>
+      <div class="grid">
+        <div class="c12"><label class="check"><input type="checkbox" data-p="witnessIsAgent" ${s.witnessIsAgent ? 'checked' : ''}> Witness is the agent (only name and IAC no. needed)</label></div>
+        ${s.witnessIsAgent ? f('witness.name', 'Agent name', 'c8', { need: true }) + f('witness.iac', 'IAC no.', 'c4', { need: true }) : ''}
+        ${f('declDate', 'Declaration date', 'c4', { type: 'dmy' })}
+      </div>
+      ${s.witnessIsAgent ? '' : `<div class="person" style="margin-top:10px">${witnessFields()}</div>`}
+
+      <h3>Part 2 · Trustee(s) <span class="muted" style="text-transform:none;letter-spacing:0">optional</span></h3>`;
+    s.trustees.forEach((t, i) => {
+      h += `<div class="person"><div class="person-head">Trustee ${i + 1}<button class="link" data-act="del" data-list="trustees" data-i="${i}">Remove</button></div>${personFields('trustees.' + i, 'trustee')}</div>`;
+    });
+    h += `<div class="grid">
+        ${f('trusteeAction', 'Instruction', 'c8', { list: ['1', '2', '3', '4'] }).replace(/<option( selected)?>([1-4])<\/option>/g, (m, sel, k) => `<option value="${k}"${sel || ''}>${['', 'Appoint the following person(s) to be trustee(s)', 'Appoint in addition to all existing trustee(s)', 'Revoke all existing trustee(s) and appoint the following', 'Revoke the appointment of all existing trustee(s)'][k]}</option>`)}
+        <div class="c4" style="align-self:end">${s.trustees.length < 2 ? '<button data-act="add" data-list="trustees">+ Add trustee</button>' : ''}</div>
+      </div>
+
+      <h3>Part 3 · Consent of existing nominee(s) / trustee(s) <span class="muted" style="text-transform:none;letter-spacing:0">needed when the policy is already a trust policy</span></h3>`;
+    s.consents.forEach((c, i) => {
+      h += `<div class="grid" style="margin-bottom:8px">${f(`consents.${i}.name`, `Consenter ${i + 1} name`, 'c6', { need: true })}${f(`consents.${i}.nric`, 'NRIC / Passport', 'c4', { need: true })}
+        <div class="c2" style="align-self:end"><button class="link" data-act="del" data-list="consents" data-i="${i}">Remove</button></div></div>`;
+    });
+    h += `<div class="row">${s.consents.length < 4 ? '<button data-act="add" data-list="consents">+ Add consenter</button>' : ''}
+      ${s.meta.existingNominees.length && !s.consents.length ? `<button data-act="addExisting">Add existing nominee(s) as consenters</button>` : ''}</div>`;
+    $('#form').innerHTML = h;
+    renderNotes();
+  }
+
+  function witnessFields() {
+    const b = 'witness';
+    return `<div class="grid">
+      ${f(b + '.name', 'Witness full name as per NRIC / Passport', 'c12', { need: true })}
+      ${f(b + '.nric', 'NRIC', 'c4', { need: !state.witness.passport })}${f(b + '.passport', 'Passport no.', 'c4')}
+      <div class="c4">${dateSel(b, ['dobDay', 'dobMonth', 'dobYear'], 'Date of birth', BIRTH_YEARS)}</div>
+      ${f(b + '.addr1', 'Mailing address', 'c12', { need: true })}${f(b + '.addr2', '', 'c12')}${f(b + '.addr3', '', 'c12')}
+      ${f(b + '.postcode', 'Postcode', 'c3')}${f(b + '.town', 'Town', 'c6', { dl: 'dl-towns' })}${f(b + '.country', 'Country', 'c3', { dl: 'dl-countries' })}
+    </div>`;
+  }
+
+  function renderNotes() {
+    const s = state, notes = [];
+    for (const w of s.meta.warnings) notes.push(w);
+    const total = s.nominees.reduce((a, n) => a + (parseFloat(n.share) || 0), 0);
+    if (total !== 100) notes.push(`Nominee shares add up to ${total}% — they must total 100%.`);
+    const familyRel = ['Husband', 'Wife', 'Son', 'Daughter', 'Father', 'Mother'];
+    if (s.proposer.muslim === 'No' && s.nominees.some(n => familyRel.includes(n.relationship)) && !s.trustees.length)
+      notes.push('Non-Muslim proposer nominating spouse/child/parent: this becomes a trust policy — the form advises appointing a trustee (Part 2).');
+    if (s.proposer.muslim === 'Yes' && s.trustees.length) notes.push('Proposer is Muslim — the form says a trustee should NOT be appointed.');
+    if (s.trustees.some(t => t.nric && t.nric.replace(/\D/g, '') === s.proposer.nric.replace(/\D/g, ''))) notes.push('The proposer cannot appoint themself as trustee.');
+    if (s.meta.trustCreated === 'Y' && !s.consents.length) {
+      const names = s.meta.existingNominees.map(n => `${n.name} (${n.relationshipRaw})`).join(', ');
+      notes.push(`The policy record shows Trust Created = Y${names ? ' with existing nominee ' + names : ''}. Changing nominees on a trust policy needs consent (Part 3).`);
+    }
+    if (s.meta.existingNominees.length) notes.push(`Existing nominee on record: ${s.meta.existingNominees.map(n => `${n.name} (${n.relationshipRaw})`).join(', ')} — pre-filled as Nominee 1. Change it if the customer is appointing someone new.`);
+    $('#notes').innerHTML = notes.length ? notes.map(n => `<li>${esc(n)}</li>`).join('') : '<li class="ok">All checks passed.</li>';
+  }
+
+  function showForm() {
+    $('#formCard').classList.remove('hidden');
+    $('#outCard').classList.remove('hidden');
+    $('#newCust').classList.remove('hidden');
+    render();
+    $('#formCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  const structural = /(\.nationality|\.relationship|\.countryOfBirth|proposer\.children|witnessIsAgent)$/;
+  $('#form').addEventListener('input', e => {
+    const p = e.target.dataset.p; if (!p) return;
+    set(p, e.target.type === 'checkbox' ? e.target.checked : e.target.dataset.fmt === 'dmy' ? (e.target.value ? e.target.value.split('-').reverse().join('/') : '') : e.target.value);
+    const wrap = e.target.closest('.need, [class^="c"]');
+    if (wrap) wrap.classList.toggle('need', wrap.classList.contains('need') && !e.target.value);
+    if (/share$/.test(p)) { render(); const el = document.querySelector(`[data-p="${p}"]`); el.focus(); el.setSelectionRange?.(99, 99); return; }
+    if (e.target.tagName === 'SELECT' || e.target.type === 'checkbox' || structural.test(p)) render();
+    else renderNotes();
+  });
+  // NRIC typed in -> fill date of birth and gender if empty
+  $('#form').addEventListener('change', e => {
+    const p = e.target.dataset.p;
+    if (!p || !/\.nric$/.test(p) || p.startsWith('consents')) return;
+    const base = p.replace(/\.nric$/, ''), person = get(base), info = C.infoFromNric(e.target.value);
+    if (!info || base === 'proposer') return;
+    for (const k of ['dobDay', 'dobMonth', 'dobYear', 'gender']) if (!person[k]) person[k] = info[k];
+    render();
+  });
+  $('#form').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    e.preventDefault();
+    const s = state, act = b.dataset.act;
+    if (act === 'add') {
+      const P = s.proposer;
+      if (b.dataset.list === 'consents') s.consents.push({ name: '', nric: '' });
+      else {
+        s[b.dataset.list].push(Object.assign(C.blankPerson(), b.dataset.list === 'nominees'
+          ? { addr1: P.addr1, addr2: P.addr2, addr3: P.addr3, postcode: P.postcode, town: P.town, country: P.country } : {}));
+        if (b.dataset.list === 'trustees' && !s.trusteeAction) s.trusteeAction = '1';
+      }
+    }
+    if (act === 'del') s[b.dataset.list].splice(+b.dataset.i, 1);
+    if (act === 'split') {
+      const n = s.nominees.length, each = Math.floor(100 / n);
+      s.nominees.forEach((x, i) => x.share = String(i === 0 ? 100 - each * (n - 1) : each));
+    }
+    if (act === 'copyAddr') {
+      const t = get(b.dataset.base), P = s.proposer;
+      Object.assign(t, { addr1: P.addr1, addr2: P.addr2, addr3: P.addr3, postcode: P.postcode, town: P.town, country: P.country });
+    }
+    if (act === 'addExisting') s.consents = s.meta.existingNominees.slice(0, 4).map(n => ({ name: n.name, nric: '' }));
+    render();
+  });
+
+  // ---------- suggestion lists for free-text fields ----------
+  const fillDl = (id, items) => { $('#' + id).innerHTML = items.map(x => `<option value="${esc(x)}">`).join(''); };
+  fillDl('dl-countries', ['MALAYSIA', 'SINGAPORE', 'BRUNEI', 'INDONESIA', 'THAILAND', 'PHILIPPINES', 'VIETNAM', 'MYANMAR', 'CAMBODIA', 'CHINA', 'HONG KONG', 'TAIWAN', 'INDIA', 'BANGLADESH', 'PAKISTAN', 'SRI LANKA', 'NEPAL', 'JAPAN', 'SOUTH KOREA', 'AUSTRALIA', 'NEW ZEALAND', 'UNITED KINGDOM', 'UNITED STATES', 'CANADA']);
+  fillDl('dl-nationalities', ['SINGAPOREAN', 'BRUNEIAN', 'INDONESIAN', 'THAI', 'FILIPINO', 'VIETNAMESE', 'MYANMAR', 'CHINESE', 'INDIAN', 'BANGLADESHI', 'PAKISTANI', 'SRI LANKAN', 'NEPALESE', 'JAPANESE', 'KOREAN', 'AUSTRALIAN', 'BRITISH', 'AMERICAN']);
+  fillDl('dl-towns', ['KUALA LUMPUR', 'PETALING JAYA', 'SHAH ALAM', 'SUBANG JAYA', 'KLANG', 'PUCHONG', 'CHERAS', 'KAJANG', 'SERI KEMBANGAN', 'PUTRAJAYA', 'GEORGE TOWN', 'BUTTERWORTH', 'BUKIT MERTAJAM', 'BAYAN LEPAS', 'NIBONG TEBAL', 'KEPALA BATAS', 'SUNGAI PETANI', 'ALOR SETAR', 'KULIM', 'IPOH', 'TAIPING', 'SERI ISKANDAR', 'TELUK INTAN', 'SEREMBAN', 'MELAKA', 'JOHOR BAHRU', 'SKUDAI', 'BATU PAHAT', 'MUAR', 'KLUANG', 'KUANTAN', 'KOTA BHARU', 'KUALA TERENGGANU', 'KANGAR', 'KOTA KINABALU', 'SANDAKAN', 'TAWAU', 'KUCHING', 'MIRI', 'SIBU', 'BINTULU']);
+  fillDl('dl-relationships', ['GRANDFATHER', 'GRANDMOTHER', 'GRANDSON', 'GRANDDAUGHTER', 'UNCLE', 'AUNT', 'NEPHEW', 'NIECE', 'COUSIN', 'FIANCE', 'FIANCEE', 'SON-IN-LAW', 'DAUGHTER-IN-LAW', 'STEPSON', 'STEPDAUGHTER', 'GUARDIAN', 'FRIEND', 'BUSINESS PARTNER']);
+
+  // ---------- extra information / answer uploads ----------
+  let extras = []; // { name, text, result, target, applied }
+  const ensureState = () => { if (!state) { state = C.buildState({}); showForm(); } };
+  function reapplyExtras() { for (const x of extras) if (x.applied) C.applyExtra(state, x.result, x.target); }
+  const targetLabel = t => t === 'proposer' ? 'Proposer' : t === 'witness' ? 'Witness' : t.replace(/^(nominees|trustees)\.(\w+)$/, (m, l, i) => `${l === 'nominees' ? 'Nominee' : 'Trustee'} ${i === 'new' ? '(new)' : +i + 1}`);
+  function targetOptions(cur) {
+    const t = ['proposer', ...state.nominees.map((_, i) => 'nominees.' + i)];
+    if (state.nominees.length < 4) t.push('nominees.new');
+    t.push(...state.trustees.map((_, i) => 'trustees.' + i));
+    if (state.trustees.length < 2) t.push('trustees.new');
+    t.push('witness');
+    return t.map(v => `<option value="${v}"${v === cur ? ' selected' : ''}>${targetLabel(v)}</option>`).join('');
+  }
+  function renderExtras() {
+    $('#extraList').innerHTML = extras.map((x, i) => {
+      const found = x.result.found;
+      let action;
+      if (x.applied) action = `<span class="applied">✓ Added to the form${x.target ? ' (' + esc(targetLabel(x.target)) + ')' : ''}</span>`;
+      else if (x.result.person) action = `Looks like an ID card. Add these details to <select data-x="${i}">${targetOptions(x.target)}</select> <button data-xapply="${i}">Add</button>`;
+      else action = '<span class="muted">Nothing recognised. Use "Label: value" lines, as in the answer sheet.</span>';
+      return `<li><div class="row" style="justify-content:space-between"><b>${esc(x.name)}</b><button class="link" data-xdel="${i}">Remove from list</button></div>
+        <div class="row" style="margin-top:4px">${action}</div>
+        ${found.length ? `<div class="found">${found.slice(0, 12).map(esc).join(' · ')}${found.length > 12 ? ` · +${found.length - 12} more` : ''}</div>` : ''}
+        <details><summary class="muted" style="font-size:12px">Text read</summary><pre>${esc(x.text)}</pre></details></li>`;
+    }).join('');
+  }
+  function addExtra(name, text) {
+    ensureState();
+    const result = C.parseExtraText(text);
+    const x = { name, text, result, target: '', applied: false };
+    if (result.patch) { C.applyExtra(state, result); x.applied = true; }
+    else if (result.person) x.target = C.suggestTarget(state, result.person);
+    extras.push(x);
+    render(); renderExtras();
+  }
+  async function processExtraFiles(files) {
+    for (const file of files) {
+      try {
+        if (/^text\/|\.txt$/i.test(file.type || file.name) || /\.txt$/i.test(file.name)) addExtra(file.name, await file.text());
+        else if (/^image\//.test(file.type)) {
+          const text = await ocr([await imageToCanvas(file)], { clean: false, status: (m) => { $('#extraStatus').textContent = `${file.name}: ${m}`; } });
+          addExtra(file.name, text);
+        } else $('#extraStatus').textContent = `${file.name}: only .txt, .png or .jpg files are supported.`;
+      } catch (err) { console.error(err); $('#extraStatus').textContent = `${file.name}: ${err.message}`; continue; }
+      $('#extraStatus').textContent = '';
+    }
+  }
+  $('#extraPick').onclick = () => $('#extraFile').click();
+  $('#extraFile').onchange = e => { processExtraFiles([...e.target.files]); e.target.value = ''; };
+  const xb = $('#extraBox');
+  xb.ondragover = e => { e.preventDefault(); xb.classList.add('over'); };
+  xb.ondragleave = () => xb.classList.remove('over');
+  xb.ondrop = e => { e.preventDefault(); xb.classList.remove('over'); processExtraFiles([...e.dataTransfer.files]); };
+  $('#extraApply').onclick = () => {
+    const t = $('#extraText').value.trim(); if (!t) return;
+    addExtra('Typed details', t);
+    if (extras[extras.length - 1].applied) $('#extraText').value = '';
+  };
+  $('#extraList').addEventListener('change', e => { const i = e.target.dataset.x; if (i != null) extras[i].target = e.target.value; });
+  $('#extraList').addEventListener('click', e => {
+    const a = e.target.dataset.xapply, d = e.target.dataset.xdel;
+    if (a != null) { const x = extras[a]; C.applyExtra(state, x.result, x.target); x.applied = true; if (x.target.endsWith('.new')) x.target = x.target.replace('new', String(state[x.target.split('.')[0]].length - 1)); render(); renderExtras(); }
+    if (d != null) { extras.splice(+d, 1); renderExtras(); }
+  });
+
+  // Answer sheet: every question, pre-filled with what is already known; choices in [brackets]
+  $('#sheetBtn').onclick = () => {
+    ensureState();
+    const s = state, L = [];
+    const q = (label, v, choices) => L.push(`${label}: ${v || (choices ? '[' + choices + ']' : '')}`);
+    const dmy = (p, a, b, c) => p[a] && p[b] && p[c] ? `${p[a]}/${p[b]}/${p[c]}` : '';
+    const person = (title, p, kind) => {
+      p = p || C.blankPerson();
+      const blank = !p.name;
+      L.push('', title);
+      q('Name', p.name); q('NRIC', p.nric); q('Passport', p.passport); q('Passport Expiry', dmy(p, 'ppDay', 'ppMonth', 'ppYear'), 'DD/MM/YYYY');
+      q('Gender', p.gender, 'Male / Female'); q('Date of Birth', dmy(p, 'dobDay', 'dobMonth', 'dobYear'), 'DD/MM/YYYY');
+      q('Nationality', blank ? '' : p.nationality === 'Others' ? p.nationalityOther : p.nationality, 'Malaysian / other country');
+      if (kind === 'nominee') {
+        q('Relationship', p.relationship === 'Others' ? p.relationshipOther : p.relationship, C.RELATIONSHIPS.slice(0, 8).join(' / ') + ' / other');
+        q('Share %', p.share);
+      } else {
+        q('Country of Birth', blank ? '' : p.countryOfBirth === 'Others' ? p.countryOfBirthOther : p.countryOfBirth, 'Malaysia / other country');
+        q('Tel No', p.tel); q('Tel Type', p.telType, 'House / Handphone / Office');
+      }
+      q('Address Line 1', p.addr1); q('Address Line 2', p.addr2); q('Address Line 3', p.addr3);
+      q('Postcode', p.postcode); q('Town', p.town); q('Country', blank ? '' : p.country);
+    };
+    L.push('# NOMINATION FORM - ANSWER SHEET', '# Type each answer after the colon. Choices are shown in [brackets]: replace them with your answer.',
+      '# Leave an answer empty if it does not apply. Dates are DD/MM/YYYY. Save, then upload this file in the app.', '');
+    q('Policy No', s.policyNo); q('Proposal No', s.proposalNo); q('Declaration Date', s.declDate, 'DD/MM/YYYY');
+    L.push('', 'PROPOSER');
+    q('Name', s.proposer.name); q('NRIC', s.proposer.nric); q('Muslim', s.proposer.muslim, 'Yes / No');
+    q('Marital Status', s.proposer.status, C.STATUSES.join(' / '));
+    q('Children', s.proposer.children === 'Yes' ? s.proposer.childrenCount : s.proposer.children, 'No / number of children');
+    for (let i = 0; i < 4; i++) person(`NOMINEE ${i + 1}`, s.nominees[i], 'nominee');
+    L.push('', '# Trustees are optional. Instruction: 1 = Appoint, 2 = Appoint in addition to existing, 3 = Revoke existing and appoint, 4 = Revoke all existing');
+    q('Trustee Instruction', s.trusteeAction, '1 / 2 / 3 / 4');
+    for (let i = 0; i < 2; i++) person(`TRUSTEE ${i + 1}`, s.trustees[i], 'trustee');
+    L.push('', 'WITNESS', '# If the witness is the agent, fill in only Name and IAC No.');
+    q('Name', s.witness.name); q('IAC No', s.witness.iac); q('NRIC', s.witness.nric);
+    q('Date of Birth', dmy(s.witness, 'dobDay', 'dobMonth', 'dobYear'), 'DD/MM/YYYY');
+    q('Address Line 1', s.witness.addr1); q('Postcode', s.witness.postcode); q('Town', s.witness.town);
+    const blob = new Blob([L.join('\r\n') + '\r\n'], { type: 'text/plain' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `Answer sheet - ${s.proposer.name || 'customer'}.txt`.replace(/[\\/:*?"<>|]/g, '') });
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+
+  // ---------- step 3: generate ----------
+  $('#gen').onclick = async () => {
+    const btn = $('#gen'); btn.disabled = true; $('#genMsg').textContent = 'Filling form…';
+    try {
+      const { bytes, log } = await C.fillNomination(templateBytes, state, PDFLib);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const name = `Nomination - ${state.proposer.name || 'customer'}${state.policyNo ? ' - ' + state.policyNo : ''}.pdf`.replace(/[\\/:*?"<>|]/g, '');
+      const a = Object.assign(document.createElement('a'), { href: url, download: name });
+      document.body.appendChild(a); a.click(); a.remove();
+      const pv = $('#preview'); pv.src = url; pv.style.display = 'block';
+      $('#genMsg').textContent = `Downloaded "${name}".` + (log.length ? ' Notes: ' + log.join('; ') : '') + ' Fields stay editable in any PDF reader.';
+    } catch (err) {
+      console.error(err);
+      $('#genMsg').textContent = 'Failed: ' + err.message;
+    } finally { btn.disabled = false; }
+  };
+})();
+</script>
+</body>
+</html>
