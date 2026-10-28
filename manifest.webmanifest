@@ -1,0 +1,16 @@
+{
+  "name": "Nomination Form Filler",
+  "short_name": "Nomination",
+  "description": "Fills the Great Eastern nomination form (NBZ-FNOMI-V07) from a customer's Policy Detail printout.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#c8102e",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

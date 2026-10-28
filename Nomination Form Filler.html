@@ -229,9 +229,13 @@ const NOM = (() => {
   const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const ALIAS = {
     name: 'proposer_name', fullname: 'proposer_name', customername: 'proposer_name', policyowner: 'proposer_name',
-    nric: 'proposer_nric', icno: 'proposer_nric', idno: 'proposer_nric', ic: 'proposer_nric',
+    clientname: 'proposer_name', client: 'proposer_name', customer: 'proposer_name', policyholder: 'proposer_name',
+    policyholdername: 'proposer_name', proposer: 'proposer_name', proposername: 'proposer_name', ownername: 'proposer_name',
+    nric: 'proposer_nric', icno: 'proposer_nric', idno: 'proposer_nric', ic: 'proposer_nric', nricno: 'proposer_nric',
+    icnumber: 'proposer_nric', newic: 'proposer_nric', mykad: 'proposer_nric', idnumber: 'proposer_nric', nricpassport: 'proposer_nric',
     policynumber: 'policy_no', policy: 'policy_no', pn: 'policy_no', proposalnumber: 'proposal_no',
-    muslim: 'proposer_muslim', religion: 'proposer_muslim', maritalstatus: 'proposer_status', status: 'proposer_status',
+    policynumbers: 'policy_no', policynos: 'policy_no', policyno: 'policy_no',
+    muslim: 'proposer_muslim', religion: 'proposer_muslim', maritalstatus: 'proposer_status', marital: 'proposer_status',
     children: 'proposer_children', address: 'proposer_address',
     nomineename: 'n1_name', nomineenric: 'n1_nric', nomineerelationship: 'n1_relationship', relationship: 'n1_relationship',
     nomineeshare: 'n1_share', nomineedob: 'n1_dob', nomineegender: 'n1_gender', nomineeaddress: 'n1_address',
@@ -240,15 +244,49 @@ const NOM = (() => {
   const KEYMAP = {};
   COLUMNS.forEach(c => { KEYMAP[norm(c.key)] = c.key; KEYMAP[norm(c.label)] = c.key; });
   Object.entries(ALIAS).forEach(([a, k]) => { if (!KEYMAP[a]) KEYMAP[a] = k; });
+  // Exact match first, then a loose guess for common header wordings ("Policy Holder Name", "Client IC No.")
+  function headerKey(h) {
+    const n = norm(h);
+    if (KEYMAP[n]) return KEYMAP[n];
+    if (/nominee|trustee|witness|agent|assured|insured|beneficiar/.test(n)) return null;
+    if (/policy.*(no|num)|^polno/.test(n) && !/proposal/.test(n)) return 'policy_no';
+    if (/proposal.*(no|num)/.test(n)) return 'proposal_no';
+    if (/nric|mykad|(^|[^a-z])ic(no|num)|idno|idnum|passport/.test(n)) return 'proposer_nric';
+    if (/(client|customer|holder|owner|proposer).*name|name.*(client|customer|holder|owner)/.test(n)) return 'proposer_name';
+    return null;
+  }
   function mapRow(row) {
     const out = {};
     for (const [h, v] of Object.entries(row)) {
-      const k = KEYMAP[norm(h)];
-      if (k && v != null && String(v).trim() !== '') out[k] = String(v).trim();
+      const k = headerKey(h);
+      if (k && !out[k] && v != null && String(v).trim() !== '') out[k] = String(v).trim();
     }
     if (/non/i.test(out.proposer_muslim || '')) out.proposer_muslim = 'No';
     else if (/^(y|yes|muslim|islam)$/i.test(out.proposer_muslim || '')) out.proposer_muslim = 'Yes';
     return out;
+  }
+  // Turn a sheet (array of arrays) into customer records: finds the header row,
+  // and gives each policy its own record when a cell lists several ("1009970612, 1004560695").
+  function importSheet(aoa) {
+    const filled = r => (r || []).filter(c => String(c).trim() !== '').length;
+    let hi = -1;
+    for (let i = 0; i < Math.min(aoa.length, 15); i++) {
+      const hits = (aoa[i] || []).filter(c => headerKey(c)).length;
+      if (hits >= 1 && filled(aoa[i]) >= 2) { hi = i; break; }
+    }
+    const headers = hi >= 0 ? aoa[hi].map(String) : [];
+    const records = [];
+    if (hi < 0) return { records, headers: (aoa.find(r => filled(r) >= 2) || []).map(String), ignored: [] };
+    for (const row of aoa.slice(hi + 1)) {
+      if (!filled(row)) continue;
+      const obj = {}; headers.forEach((h, j) => { if (h.trim()) obj[h] = row[j]; });
+      const rec = mapRow(obj);
+      if (!rec.proposer_name && !rec.policy_no && !rec.proposal_no) continue;
+      const pols = String(rec.policy_no || '').split(/[,;\/\n|&]+|\s{2,}|\s+and\s+/i).map(s => s.trim()).filter(s => /\d{5,}/.test(s));
+      if (pols.length > 1) pols.forEach(p => records.push({ ...rec, policy_no: p }));
+      else records.push(rec);
+    }
+    return { records, headers, ignored: headers.filter(h => h.trim() && !headerKey(h)) };
   }
 
   // ---- text helpers ----
@@ -535,7 +573,7 @@ const NOM = (() => {
     return doc.save();
   }
 
-  return { COLUMNS, REL, STATUS, TRUST_OPT, mapRow, enrich, validate, fill, parseDate, fromNric, splitAddress, wrap };
+  return { COLUMNS, REL, STATUS, TRUST_OPT, mapRow, importSheet, enrich, validate, fill, parseDate, fromNric, splitAddress, wrap };
 })();
 if (typeof module !== 'undefined') module.exports = NOM;
 </script>
@@ -555,7 +593,7 @@ const TEMPLATE_B64 = "JVBERi0xLjcNJeLjz9MNCjEwOTMgMCBvYmoNPDwvTGluZWFyaXplZCAxL0
   let nomTab = 1, previewUrl = null;
   const uid = () => Math.random().toString(36).slice(2, 10);
   const save = () => { store.set('customers', customers); store.set('settings', settings); };
-  const toast = msg => { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3200); };
+  const toast = (msg, ms = 3200) => { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms); };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`; };
 
@@ -726,22 +764,32 @@ const TEMPLATE_B64 = "JVBERi0xLjcNJeLjz9MNCjEwOTMgMCBvYmoNPDwvTGluZWFyaXplZCAxL0
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     try {
       const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true, raw: false });
-      const ws = wb.Sheets[wb.SheetNames.find(n => !/guide/i.test(n)) || wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'dd/mm/yyyy' });
-      const added = [];
-      for (const row of rows) {
-        const rec = NOM.mapRow(row);
-        if (!rec.proposer_name && !rec.policy_no && !rec.proposal_no) continue;
+      // use the first sheet that has customer rows (skipping our own Guide sheet)
+      let res = null, sheet = '', seen = [];
+      for (const n of wb.SheetNames.filter(n => !/^guide$/i.test(n))) {
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: false, dateNF: 'dd/mm/yyyy' });
+        const r = NOM.importSheet(aoa);
+        if (r.records.length) { res = r; sheet = n; break; }
+        seen.push(...r.headers.filter(h => h.trim()));
+      }
+      if (!res) {
+        toast(`No customers found in ${file.name}. Need a column for client name or policy no.` + (seen.length ? ` Columns seen: ${[...new Set(seen)].slice(0, 6).join(', ')}` : ''), 9000);
+        return;
+      }
+      let added = 0, updated = 0, first = null;
+      for (const rec of res.records) {
         // update an existing customer with the same policy no., otherwise add
         const ex = rec.policy_no && customers.find(c => c.policy_no === rec.policy_no);
-        if (ex) Object.assign(ex, rec); else { rec.id = uid(); customers.push(rec); }
-        added.push(rec);
+        if (ex) { Object.assign(ex, rec); updated++; first = first || ex; }
+        else { rec.id = uid(); customers.push(rec); added++; first = first || rec; }
       }
-      const unknown = rows.length ? Object.keys(rows[0]).filter(h => !Object.keys(NOM.mapRow({ [h]: 'x' })).length) : [];
-      if (added.length) selId = (customers.find(c => c.policy_no && c.policy_no === added[0].policy_no) || added[0]).id || selId;
+      selId = first.id;
       save(); renderAll();
-      toast(`Imported ${added.length} customer${added.length === 1 ? '' : 's'} from ${file.name}` + (unknown.length ? ` · ignored columns: ${unknown.slice(0, 5).join(', ')}${unknown.length > 5 ? '…' : ''}` : ''));
-    } catch (err) { console.error(err); toast('Could not read file: ' + err.message); }
+      const more = wb.SheetNames.length > 1 ? ` (sheet "${sheet}")` : '';
+      toast(`Imported ${added} new${updated ? `, updated ${updated}` : ''} from ${file.name}${more}` +
+        (res.ignored.length ? ` · not used: ${res.ignored.slice(0, 5).join(', ')}${res.ignored.length > 5 ? '…' : ''}` : '') +
+        (res.records.some(r => r.n1_name) ? '' : '. Add nominee details for each customer before exporting.'), 9000);
+    } catch (err) { console.error(err); toast('Could not read file: ' + err.message, 9000); }
   };
   $('#btnTemplate').onclick = () => {
     const keys = NOM.COLUMNS.map(c => c.key);

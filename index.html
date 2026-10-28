@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nomination Form Filler</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#c8102e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Nomination">
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -63,6 +70,7 @@
   details pre { white-space: pre-wrap; font-size: 11px; max-height: 300px; overflow: auto; background: var(--bg); padding: 10px; border-radius: 6px; }
   #preview { width: 100%; height: 80vh; border: 1px solid var(--line); border-radius: 8px; display: none; margin-top: 14px; background: #fff; }
   .top { position: sticky; top: 0; z-index: 10; }
+  #installBtn:not(.hidden) + #newCust { margin-left: 0 !important; }
   #newBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 24px; background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid var(--line); }
   #newBar span { flex: 1 1 260px; }
   .hidden { display: none !important; }
@@ -81,6 +89,7 @@
 <header>
   <h1>Nomination Form Filler</h1>
   <span class="tag">Great Eastern · Appointment / Change of Nominee(s) / Trustee(s) · NBZ-FNOMI-V07</span>
+  <button class="hidden" id="installBtn" style="margin-left:auto;white-space:nowrap">Install app</button>
   <button class="primary hidden" id="newCust" style="margin-left:auto;white-space:nowrap">+ New customer</button>
 </header>
 <div id="newBar" class="hidden">
@@ -195,6 +204,18 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
   $('#newCust2').onclick = () => $('#newCust').click();
+
+  // Installable phone/desktop app: offline support plus an "Install app" button where the browser offers one.
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(console.warn);
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; $('#installBtn').classList.remove('hidden'); });
+  window.addEventListener('appinstalled', () => $('#installBtn').classList.add('hidden'));
+  $('#installBtn').onclick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt = null; $('#installBtn').classList.add('hidden');
+  };
 
   const setStatus = (msg, pct) => {
     $('#status').textContent = msg;
